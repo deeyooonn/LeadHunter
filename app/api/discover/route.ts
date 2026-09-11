@@ -9,6 +9,8 @@ interface NominatimResult {
   display_name: string;
   lat: string;
   lon: string;
+  osm_type?: string;
+  osm_id?: number;
 }
 
 // ─── Overpass API Types ───────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ function buildAddress(tags: OsmElement['tags'], fallbackArea: string): string {
 
 async function geocodeQuery(
   searchQuery: string
-): Promise<{ bbox: [number, number, number, number]; displayName: string }> {
+): Promise<{ bbox: [number, number, number, number]; displayName: string; areaId?: number }> {
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=1`;
 
   console.log(`[discover] Nominatim geocoding: "${searchQuery}"`);
@@ -114,123 +116,137 @@ async function geocodeQuery(
 
   if (!response.ok) {
     console.warn(`[discover] Nominatim returned ${response.status} — falling back to Bulacan bbox`);
-    return { bbox: BULACAN_BBOX, displayName: 'Bulacan, Philippines' };
+    return { bbox: BULACAN_BBOX, displayName: 'Bulacan, Philippines', areaId: 3601504656 };
   }
 
   const results = (await response.json()) as NominatimResult[];
 
   if (!results || results.length === 0) {
     console.warn(`[discover] Nominatim: no results for "${searchQuery}" — falling back to Bulacan bbox`);
-    return { bbox: BULACAN_BBOX, displayName: 'Bulacan, Philippines' };
+    return { bbox: BULACAN_BBOX, displayName: 'Bulacan, Philippines', areaId: 3601504656 };
   }
 
   const first = results[0];
   const [south, north, west, east] = first.boundingbox.map(Number) as [number, number, number, number];
 
-  console.log(`[discover] Nominatim resolved: "${first.display_name}" bbox=[${south},${north},${west},${east}]`);
+  // In OpenStreetMap, relation areas are offset by 3,600,000,000 and ways by 2,400,000,000
+  let areaId: number | undefined;
+  if (first.osm_type === 'relation' && first.osm_id) {
+    areaId = 3600000000 + Number(first.osm_id);
+  } else if (first.osm_type === 'way' && first.osm_id) {
+    areaId = 2400000000 + Number(first.osm_id);
+  }
 
-  return { bbox: [south, north, west, east], displayName: first.display_name };
+  console.log(
+    `[discover] Nominatim resolved: "${first.display_name}" areaId=${areaId ?? 'none'} bbox=[${south},${north},${west},${east}]`
+  );
+
+  return { bbox: [south, north, west, east], displayName: first.display_name, areaId };
 }
 
 // ─── Step 2: Overpass QL Generator & Query with Failover ──────────────────────
 
-function buildOverpassQuery(bbox: [number, number, number, number], businessType?: string): string {
+function buildOverpassQuery(
+  bbox: [number, number, number, number],
+  businessType?: string,
+  areaId?: number
+): string {
   const [south, north, west, east] = bbox;
-  const bboxStr = `(${south},${west},${north},${east})`;
+  // If an exact administrative area polygon is resolved, use area.searchArea for 100% boundary accuracy!
+  const spatialFilter = areaId ? `(area.searchArea)` : `(${south},${west},${north},${east})`;
+  const areaHeader = areaId ? `area(${areaId})->.searchArea;\n` : '';
 
   let filters: string[] = [];
 
   switch (businessType) {
     case 'salons':
-      filters = [`nw["shop"~"hairdresser|barber|hair_salon"]${bboxStr};`];
+      filters = [`nw["shop"~"hairdresser|barber|hair_salon"]${spatialFilter};`];
       break;
 
     case 'beauty':
       filters = [
-        `nw["shop"~"beauty|cosmetics|nail_salon|hairdresser|barber"]${bboxStr};`,
-        `nw["amenity"="beauty"]${bboxStr};`,
+        `nw["shop"~"beauty|cosmetics|nail_salon|hairdresser|barber"]${spatialFilter};`,
+        `nw["amenity"="beauty"]${spatialFilter};`,
       ];
       break;
 
     case 'restaurants':
-      filters = [`nw["amenity"~"restaurant|fast_food|food_court|bistro"]${bboxStr};`];
+      filters = [`nw["amenity"~"restaurant|fast_food|food_court|bistro"]${spatialFilter};`];
       break;
 
     case 'cafes':
       filters = [
-        `nw["amenity"~"cafe|bakery|coffee_shop"]${bboxStr};`,
-        `nw["shop"~"bakery|pastry|coffee"]${bboxStr};`,
+        `nw["amenity"~"cafe|bakery|coffee_shop"]${spatialFilter};`,
+        `nw["shop"~"bakery|pastry|coffee"]${spatialFilter};`,
       ];
       break;
 
     case 'clinics':
       filters = [
-        `nw["amenity"~"clinic|doctors|hospital"]${bboxStr};`,
-        `nw["healthcare"~"clinic|doctor|centre"]${bboxStr};`,
+        `nw["amenity"~"clinic|doctors|hospital"]${spatialFilter};`,
+        `nw["healthcare"~"clinic|doctor|centre"]${spatialFilter};`,
       ];
       break;
 
     case 'dentists':
       filters = [
-        `nw["amenity"="dentist"]${bboxStr};`,
-        `nw["healthcare"="dentist"]${bboxStr};`,
+        `nw["amenity"="dentist"]${spatialFilter};`,
+        `nw["healthcare"="dentist"]${spatialFilter};`,
       ];
       break;
 
     case 'spas':
       filters = [
-        `nw["amenity"="spa"]${bboxStr};`,
-        `nw["shop"="massage"]${bboxStr};`,
-        `nw["leisure"="sauna"]${bboxStr};`,
+        `nw["amenity"="spa"]${spatialFilter};`,
+        `nw["shop"="massage"]${spatialFilter};`,
+        `nw["leisure"="sauna"]${spatialFilter};`,
       ];
       break;
 
     case 'pharmacies':
       filters = [
-        `nw["amenity"="pharmacy"]${bboxStr};`,
-        `nw["healthcare"="pharmacy"]${bboxStr};`,
+        `nw["amenity"="pharmacy"]${spatialFilter};`,
+        `nw["healthcare"="pharmacy"]${spatialFilter};`,
       ];
       break;
 
     case 'gyms':
       filters = [
-        `nw["leisure"~"fitness_centre|sports_centre"]${bboxStr};`,
-        `nw["sport"="fitness"]${bboxStr};`,
+        `nw["leisure"~"fitness_centre|sports_centre"]${spatialFilter};`,
+        `nw["sport"="fitness"]${spatialFilter};`,
       ];
       break;
 
     case 'auto':
       filters = [
-        `nw["shop"~"car_repair|car_parts|car|motorcycle"]${bboxStr};`,
-        `nw["amenity"="car_wash"]${bboxStr};`,
+        `nw["shop"~"car_repair|car_parts|car|motorcycle"]${spatialFilter};`,
+        `nw["amenity"="car_wash"]${spatialFilter};`,
       ];
       break;
 
     case 'hotels':
-      filters = [`nw["tourism"~"hotel|motel|guest_house|hostel|resort"]${bboxStr};`];
+      filters = [`nw["tourism"~"hotel|motel|guest_house|hostel|resort"]${spatialFilter};`];
       break;
 
     case 'pets':
       filters = [
-        `nw["amenity"="veterinary"]${bboxStr};`,
-        `nw["shop"~"pet|pet_grooming"]${bboxStr};`,
+        `nw["amenity"="veterinary"]${spatialFilter};`,
+        `nw["shop"~"pet|pet_grooming"]${spatialFilter};`,
       ];
       break;
 
     case 'all':
     default:
       filters = [
-        `nw["amenity"~"restaurant|cafe|clinic|dentist|beauty|fast_food|bar|pub|pharmacy|hospital"]${bboxStr};`,
-        `nw["shop"~"hairdresser|beauty|salon|cosmetics|health_food|optician|massage|bakery"]${bboxStr};`,
+        `nw["amenity"~"restaurant|cafe|clinic|dentist|beauty|fast_food|bar|pub|pharmacy|hospital"]${spatialFilter};`,
+        `nw["shop"~"hairdresser|beauty|salon|cosmetics|health_food|optician|massage|bakery"]${spatialFilter};`,
       ];
       break;
   }
 
-  // Uses 'out center 150;' — eliminates slow recursive way geometry fetching
-  // and prevents server 504 gateway timeouts on large regional bounding boxes.
   return `
 [out:json][timeout:25];
-(
+${areaHeader}(
   ${filters.join('\n  ')}
 );
 out center 150;
@@ -239,13 +255,14 @@ out center 150;
 
 async function queryOverpass(
   bbox: [number, number, number, number],
-  businessType?: string
+  businessType?: string,
+  areaId?: number
 ): Promise<OsmElement[]> {
   const [south, north, west, east] = bbox;
-  const overpassQuery = buildOverpassQuery(bbox, businessType);
+  const overpassQuery = buildOverpassQuery(bbox, businessType, areaId);
 
   console.log(
-    `[discover] Querying Overpass with bbox [${south},${west},${north},${east}] category: "${businessType ?? 'all'}"`
+    `[discover] Querying Overpass with areaId=${areaId ?? 'bbox'} category: "${businessType ?? 'all'}"`
   );
 
   let lastError: Error | null = null;
@@ -382,10 +399,10 @@ export async function POST(request: NextRequest) {
     );
 
     // ── Step 1: Geocode via Nominatim ─────────────────────────────────────────
-    const { bbox, displayName } = await geocodeQuery(locationTarget);
+    const { bbox, displayName, areaId } = await geocodeQuery(locationTarget);
 
     // ── Step 2: Query Overpass with mirror failover ───────────────────────────
-    const elements = await queryOverpass(bbox, businessType);
+    const elements = await queryOverpass(bbox, businessType, areaId);
 
     if (elements.length === 0) {
       console.warn(`[discover] Overpass returned 0 elements for "${locationTarget}"`);
