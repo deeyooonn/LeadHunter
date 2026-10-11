@@ -1,33 +1,11 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
 export const metadata: Metadata = {
-  title: 'LeadHunter — Local Business Lead Generator',
-  description:
-    'Search for local businesses, extract contact info, and discover leads with the Google Places API and intelligent web scraping.',
-  keywords: ['lead generation', 'local business', 'web scraping', 'Google Places', 'email finder'],
-  openGraph: {
-    title: 'LeadHunter — Local Business Lead Generator',
-    description: 'Find local business leads instantly with smart scraping.',
-    type: 'website',
-  },
+  title: 'LeadHunter — Local business discovery',
+  description: 'Discover businesses in the Philippines and collect their public contact details.',
 };
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en" className={inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
-    </html>
-  );
+const themeScript = `(function(){var t='dark';try{var s=localStorage.getItem('leadhunter.theme');if(s==='light'||s==='dark')t=s;}catch(e){}document.documentElement.dataset.theme=t;})();`;
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="en" data-theme="dark" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body>{children}</body></html>;
 }

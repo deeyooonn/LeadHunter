@@ -1,3 +1,5 @@
+> Historical snapshot from before the location and scraper rewrite. See [LeadHunter_CONTEXT.md](LeadHunter_CONTEXT.md) for the current implementation.
+
 # 📋 Project Summary: LeadHunter (Client Scrapper)
 
 **Local Lead Generation & Info Collector Tool**  

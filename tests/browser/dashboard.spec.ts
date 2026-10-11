@@ -1,0 +1,81 @@
+import { test, expect } from '@playwright/test';
+import { readFile, mkdir } from 'node:fs/promises';
+
+const lead = { id: 'osm_node_1', place_id: 'osm_node_1', business_name: 'Cavite Coffee House', category: 'cafe', address: 'Imus, Cavite', phone: null, email: null, facebook_url: null, instagram_url: null, website_url: 'https://business.ph/', website_status: 'CUSTOM_WEBSITE', google_maps_url: 'https://www.google.com/maps/search/?api=1&query=14.4,120.9', outreached: false, created_at: '2026-10-10T00:00:00.000Z', scan_status: 'NOT_SCANNED', osm_contacts: { phones: ['+639171234567'], emails: [], socials: [] }, scraped_contacts: { phones: [], emails: [], socials: [] } };
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/config', route => route.fulfill({ json: { rendererAvailable: false, authRequired: false } }));
+  await page.route('**/api/discover', route => route.fulfill({ json: { leads: [lead, { ...lead, id: 'osm_node_2', place_id: 'osm_node_2', business_name: 'Imus Florist', osm_contacts: { phones: [], emails: ['hello@flowers.ph'], socials: [] } }], matchedArea: { id: 'relation/1503544', name: 'Cavite, Calabarzon, Philippines' } } }));
+});
+test('dark default and persisted light theme are set before first frame', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: 'Switch to light theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.addInitScript(() => { requestAnimationFrame(() => { document.documentElement.dataset.firstFrameTheme = document.documentElement.dataset.theme; }); });
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('html')).toHaveAttribute('data-first-frame-theme', 'light');
+  await expect(page.getByText('Type of Business', { exact: true })).toHaveCount(0);
+});
+test('search, contacts, filtered CSV, rescan and stale-result clearing work', async ({ page }) => {
+  await page.route('**/api/enrich', route => route.fulfill({ json: { scan: { contacts: { phones: ['+639181234567'], emails: ['hello@business.ph'], socials: [{ platform: 'Facebook', url: 'https://facebook.com/business' }] }, status: 'CONTACTS_FOUND', reason: 'Public contact details found.', scannedAt: '2026-10-10T04:00:00.000Z', source: 'website', pages: ['https://business.ph/contact'] } } }));
+  await page.goto('/'); await page.getByLabel('Province, city, or municipality').fill('Cavite'); await page.getByRole('button', { name: 'Discover leads' }).click();
+  await expect(page.getByText('Results limited to')).toBeVisible();
+  await page.getByLabel('Has phone', { exact: true }).check();
+  await expect(page.getByText('Imus Florist')).toHaveCount(0);
+  const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: /Export CSV/ }).click();
+  const download = await downloadPromise; const path = await download.path(); expect(path).toBeTruthy();
+  const csv = await readFile(path!, 'utf8'); expect(csv).toContain("'+639171234567"); expect(csv).not.toContain('Imus Florist');
+  await page.getByRole('button', { name: 'Scan', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'hello@business.ph' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rescan' })).toBeVisible();
+  await mkdir('artifacts', { recursive: true });
+  await page.screenshot({ path: 'artifacts/dashboard-dark.png', fullPage: true });
+  await page.getByRole('button', { name: 'Switch to light theme' }).click();
+  await page.screenshot({ path: 'artifacts/dashboard-light.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'artifacts/dashboard-mobile.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.route('**/api/discover', route => route.fulfill({ status: 422, json: { error: 'No matching Philippine boundary found.' } }));
+  await page.getByLabel('Province, city, or municipality').fill('nonsense'); await page.getByRole('button', { name: 'Discover leads' }).click();
+  await expect(page.getByRole('main').getByRole('alert')).toContainText('No matching Philippine boundary');
+  await expect(page.getByText('Cavite Coffee House')).toHaveCount(0);
+});
+test('bulk scan can be stopped without queuing more websites', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/enrich', async route => { requests++; await new Promise(resolve => setTimeout(resolve, 1500)); await route.abort().catch(() => {}); });
+  await page.goto('/'); await page.getByLabel('Province, city, or municipality').fill('Cavite'); await page.getByRole('button', { name: 'Discover leads' }).click();
+  await page.getByRole('button', { name: 'Scan visible websites' }).click();
+  await expect(page.getByRole('button', { name: 'Stop scanning' })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop scanning' }).click();
+  await expect(page.getByText('Scanning stopped. Completed results are kept.')).toBeVisible();
+  expect(requests).toBeLessThanOrEqual(2);
+});
+
+test('location suggestions match the field width and support keyboard, pointer and mobile use', async ({ page }) => {
+  await page.goto('/');
+  const input = page.getByRole('combobox', { name: 'Province, city, or municipality' });
+  await input.click();
+  const list = page.getByRole('listbox', { name: 'Locations' });
+  await expect(list).toBeVisible();
+  const fieldBounds = await input.boundingBox();
+  const listBounds = await list.boundingBox();
+  expect(fieldBounds).not.toBeNull(); expect(listBounds).not.toBeNull();
+  expect(Math.abs(fieldBounds!.width - listBounds!.width)).toBeLessThanOrEqual(2);
+  expect(listBounds!.height).toBeGreaterThanOrEqual(300);
+  await input.fill('Quezon City');
+  await input.press('ArrowDown'); await input.press('Enter');
+  await expect(input).toHaveValue('Quezon City, Metro Manila (NCR)');
+  await expect(list).toHaveCount(0);
+  await expect(page.getByText('Cavite Coffee House')).toHaveCount(0);
+  await input.fill('Cavite');
+  await page.getByRole('option', { name: 'Cavite', exact: true }).click();
+  await expect(input).toHaveValue('Cavite'); await expect(list).toHaveCount(0);
+  await input.click(); await input.press('Escape'); await expect(list).toHaveCount(0);
+  await input.fill('A place I typed'); await expect(input).toHaveValue('A place I typed');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await input.fill(''); await input.click();
+  await expect(list).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: 'artifacts/location-dropdown-mobile.png', fullPage: true });
+});

@@ -1,3 +1,5 @@
+> Historical snapshot from before the location and scraper rewrite. See [LeadHunter_CONTEXT.md](LeadHunter_CONTEXT.md) for the current implementation.
+
 # LeadHunter — GitHub Connection & Project Status
 
 **Report date:** 2026-10-10  

@@ -1,98 +1,10 @@
-// Location and Business Type definitions for Dropdown Filters
+// Location suggestions
 // Contains all 81 Provinces of the Philippines + Metro Manila (NCR) with component cities and municipalities.
 
 export interface ProvinceOption {
   name: string;
   cities: string[];
 }
-
-export interface BusinessTypeOption {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-}
-
-export const BUSINESS_TYPES: BusinessTypeOption[] = [
-  {
-    id: 'salons',
-    name: 'Hair Salons & Barbershops',
-    icon: '💇',
-    description: 'Hairdressers, hair stylists, barber shops',
-  },
-  {
-    id: 'beauty',
-    name: 'Beauty Salons & Cosmetics',
-    icon: '💄',
-    description: 'Nail salons, makeup studios, skincare clinics, cosmetics',
-  },
-  {
-    id: 'restaurants',
-    name: 'Restaurants & Dining',
-    icon: '🍽️',
-    description: 'Fine dining, casual restaurants, fast food, bistros',
-  },
-  {
-    id: 'cafes',
-    name: 'Cafes & Bakeries',
-    icon: '☕',
-    description: 'Coffee shops, bakeries, tea shops, dessert cafes',
-  },
-  {
-    id: 'clinics',
-    name: 'Medical Clinics & Doctors',
-    icon: '🏥',
-    description: 'General practitioners, medical centers, outpatient clinics',
-  },
-  {
-    id: 'dentists',
-    name: 'Dental Clinics',
-    icon: '🦷',
-    description: 'Dental clinics, orthodontics, oral health care',
-  },
-  {
-    id: 'spas',
-    name: 'Spas & Massage Centers',
-    icon: '💆',
-    description: 'Day spas, massage therapy, wellness centers',
-  },
-  {
-    id: 'pharmacies',
-    name: 'Pharmacies & Drugstores',
-    icon: '💊',
-    description: 'Drugstores, pharmaceutical dispensaries',
-  },
-  {
-    id: 'gyms',
-    name: 'Gyms & Fitness Centers',
-    icon: '🏋️',
-    description: 'Fitness centers, gyms, martial arts, yoga studios',
-  },
-  {
-    id: 'auto',
-    name: 'Auto Repair & Car Care',
-    icon: '🚗',
-    description: 'Car repair shops, tire centers, auto detailing, car wash',
-  },
-  {
-    id: 'hotels',
-    name: 'Hotels & Accommodations',
-    icon: '🏨',
-    description: 'Hotels, resorts, inns, bed & breakfast',
-  },
-  {
-    id: 'pets',
-    name: 'Pet Care & Veterinary',
-    icon: '🐾',
-    description: 'Veterinary clinics, pet grooming, pet shops',
-  },
-  {
-    id: 'all',
-    name: 'All Business Categories',
-    icon: '🌐',
-    description: 'Search across all commercial categories',
-  },
-];
 
 export const PROVINCES_DATA: ProvinceOption[] = [
   {

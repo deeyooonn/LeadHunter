@@ -1,250 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
-import * as cheerio from 'cheerio';
-import type { WebsiteStatus, EnrichResponse } from '@/types/lead';
-import { supabaseServer } from '@/lib/supabase';
+import { normalizeUrl } from '@/lib/safe-fetch';
+import { scanWebsite } from '@/lib/scraper/scan';
+import { readScan, saveScan } from '@/lib/lead-store';
+import { rejectCrossSite } from '@/lib/api-guard';
+import type { EnrichResponse, ScanResult } from '@/types/lead';
 
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-
-/**
- * Fetch a URL with a timeout and User-Agent header
- */
-async function fetchWithTimeout(url: string, timeoutMs = 10000): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        Connection: 'keep-alive',
-      },
-      redirect: 'follow',
-    });
-    return response;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-/**
- * Normalize a URL — prepend https if no protocol present
- */
-function normalizeUrl(url: string): string {
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `https://${url}`;
-}
-
-/**
- * Extract the first valid email from HTML using Cheerio + Regex
- */
-function extractEmail($: cheerio.CheerioAPI): string | null {
-  // Priority 1: mailto: links
-  const mailtoEmails: string[] = [];
-  $('a[href^="mailto:"]').each((_, el) => {
-    const href = $(el).attr('href') ?? '';
-    const email = href.replace('mailto:', '').split('?')[0].trim();
-    if (email && EMAIL_REGEX.test(email)) {
-      mailtoEmails.push(email);
-    }
-    EMAIL_REGEX.lastIndex = 0; // Reset regex state
-  });
-
-  if (mailtoEmails.length > 0) return mailtoEmails[0];
-
-  // Priority 2: Scan footer / contact sections for plain-text email patterns
-  const sectionsToSearch = [
-    'footer',
-    '#footer',
-    '.footer',
-    '#contact',
-    '.contact',
-    '[class*="contact"]',
-    '[id*="contact"]',
-    '[class*="footer"]',
-  ];
-
-  for (const selector of sectionsToSearch) {
-    const text = $(selector).text();
-    if (text) {
-      const matches = text.match(EMAIL_REGEX);
-      if (matches && matches.length > 0) return matches[0];
-    }
-  }
-
-  // Priority 3: Full body scan as last resort (grab first email found)
-  const bodyText = $('body').text();
-  const bodyMatches = bodyText.match(EMAIL_REGEX);
-  if (bodyMatches && bodyMatches.length > 0) {
-    // Filter out common false positives
-    const filtered = bodyMatches.filter(
-      (email) =>
-        !email.includes('example.com') &&
-        !email.includes('sentry.io') &&
-        !email.endsWith('.png') &&
-        !email.endsWith('.jpg')
-    );
-    return filtered[0] ?? null;
-  }
-
-  return null;
-}
-
-/**
- * Extract the first Facebook and Instagram URL from all hrefs
- */
-function extractSocialLinks($: cheerio.CheerioAPI): {
-  facebook_url: string | null;
-  instagram_url: string | null;
-} {
-  let facebook_url: string | null = null;
-  let instagram_url: string | null = null;
-
-  $('a[href]').each((_, el) => {
-    const href = $(el).attr('href') ?? '';
-
-    if (!facebook_url && href.includes('facebook.com/')) {
-      // Normalize and clean the URL
-      try {
-        const url = new URL(href.startsWith('http') ? href : `https:${href}`);
-        facebook_url = url.href;
-      } catch {
-        facebook_url = href;
-      }
-    }
-
-    if (!instagram_url && href.includes('instagram.com/')) {
-      try {
-        const url = new URL(href.startsWith('http') ? href : `https:${href}`);
-        instagram_url = url.href;
-      } catch {
-        instagram_url = href;
-      }
-    }
-
-    // Early exit once we have both
-    if (facebook_url && instagram_url) return false;
-  });
-
-  return { facebook_url, instagram_url };
-}
-
-/**
- * POST /api/enrich
- * Body: { lead_id: string, website_url: string }
- * Fetches and scrapes the website, then updates the lead in Supabase
- */
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+const inFlight = new Map<string, Promise<ScanResult>>();
 export async function POST(request: NextRequest) {
-  let lead_id = '';
-  let website_url = '';
-
+  const rejected = rejectCrossSite(request); if (rejected) return rejected;
   try {
-    const body = await request.json();
-    lead_id = body.lead_id as string;
-    website_url = body.website_url as string;
-
-    if (!lead_id || !website_url) {
-      return NextResponse.json(
-        { error: 'lead_id and website_url are required' },
-        { status: 400 }
-      );
-    }
-
-    const normalizedUrl = normalizeUrl(website_url);
-
-    // ── Attempt to fetch the website ─────────────────────────────────────────
-    let html: string;
-    let website_status: WebsiteStatus = 'CUSTOM_WEBSITE';
-
-    try {
-      const response = await fetchWithTimeout(normalizedUrl, 10000);
-
-      if (!response.ok) {
-        console.warn(`[enrich] Non-OK response for ${normalizedUrl}: ${response.status}`);
-        website_status = 'DEAD_LINK';
-
-        // Update DB and return early
-        await supabaseServer
-          .from('leads')
-          .update({ website_status })
-          .eq('id', lead_id);
-
-        const result: EnrichResponse = {
-          email: null,
-          facebook_url: null,
-          instagram_url: null,
-          website_status,
-        };
-        return NextResponse.json(result);
+    const body: unknown = await request.json();
+    if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid scan request.' }, { status: 400 });
+    const input = body as Record<string, unknown>;
+    if (typeof input.lead_id !== 'string' || !/^(?:osm_(?:node|way|relation)_\d{1,20}|[a-f0-9-]{36})$/i.test(input.lead_id) || typeof input.website_url !== 'string') return NextResponse.json({ error: 'A valid lead ID and website URL are required.' }, { status: 400 });
+    const url = normalizeUrl(input.website_url).href;
+    let scan = input.force === true ? null : readScan(url);
+    const cached = Boolean(scan);
+    if (!scan) {
+      let pending = inFlight.get(url);
+      if (!pending) {
+        if (inFlight.size >= 2) return NextResponse.json({ error: 'Two scans are already running. Please wait.' }, { status: 429 });
+        pending = scanWebsite(url, { signal: request.signal, rendererUrl: input.allow_renderer === true ? process.env.SCRAPER_RENDERER_URL : undefined, archive: process.env.SCRAPER_ARCHIVE_ENABLED !== 'false' });
+        inFlight.set(url, pending);
       }
-
-      html = await response.text();
-    } catch (fetchError) {
-      // Network error, timeout, etc.
-      const message =
-        fetchError instanceof Error ? fetchError.message : 'Unknown fetch error';
-      console.warn(`[enrich] Fetch failed for ${normalizedUrl}: ${message}`);
-      website_status = 'DEAD_LINK';
-
-      await supabaseServer
-        .from('leads')
-        .update({ website_status })
-        .eq('id', lead_id);
-
-      const result: EnrichResponse = {
-        email: null,
-        facebook_url: null,
-        instagram_url: null,
-        website_status,
-        error: `Website unreachable: ${message}`,
-      };
-      return NextResponse.json(result);
+      try { scan = await pending; } finally { if (inFlight.get(url) === pending) inFlight.delete(url); }
     }
-
-    // ── Parse with Cheerio ────────────────────────────────────────────────────
-    const $ = cheerio.load(html);
-
-    const email = extractEmail($);
-    const { facebook_url, instagram_url } = extractSocialLinks($);
-
-    // ── Update the lead in Supabase ───────────────────────────────────────────
-    const { error: dbError } = await supabaseServer
-      .from('leads')
-      .update({
-        email,
-        facebook_url,
-        instagram_url,
-        website_status,
-      })
-      .eq('id', lead_id);
-
-    if (dbError) {
-      console.error('[enrich] Supabase update error:', dbError);
-      return NextResponse.json(
-        { error: `Database error: ${dbError.message}` },
-        { status: 500 }
-      );
-    }
-
-    const result: EnrichResponse = {
-      email,
-      facebook_url,
-      instagram_url,
-      website_status,
+    request.signal.throwIfAborted();
+    scan = saveScan(url, scan);
+    const response: EnrichResponse = {
+      scan, cached, email: scan.contacts.emails[0] ?? null,
+      facebook_url: scan.contacts.socials.find(s => s.platform === 'Facebook')?.url ?? null,
+      instagram_url: scan.contacts.socials.find(s => s.platform === 'Instagram')?.url ?? null,
+      website_status: scan.status === 'DEAD_LINK' ? 'DEAD_LINK' : scan.source === 'social' ? 'FB_ONLY' : 'CUSTOM_WEBSITE',
     };
-
-    return NextResponse.json(result);
-  } catch (err) {
-    console.error('[enrich] Unexpected error:', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'An unexpected error occurred' },
-      { status: 500 }
-    );
+    return NextResponse.json(response);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Scan failed.' }, { status: 400 });
   }
 }
