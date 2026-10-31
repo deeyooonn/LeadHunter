@@ -441,6 +441,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
+        {process.env.NEXT_PUBLIC_PORTFOLIO_DEMO !== 'false' && <p className="mb-5 rounded-lg border border-slate-600 bg-slate-900 p-4 text-sm text-slate-200">Portfolio demo · All businesses and contact details are synthetic. Search, filter, enrich sample records, and export CSV. No live scraping or outreach is performed.</p>}
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <header className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -449,7 +450,7 @@ export default function Dashboard() {
                 <Target className="text-brand-400" size={26} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-3xl font-bold gradient-text tracking-tight">
                     LeadHunter
                   </h1>
@@ -811,7 +812,7 @@ export default function Dashboard() {
 
         {/* ── Data Table ────────────────────────────────────────────────────── */}
         <div className="glass-card rounded-2xl overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Lead results, scroll horizontally to see all columns">
             <table className="lead-table w-full min-w-[850px]">
               <thead>
                 <tr>

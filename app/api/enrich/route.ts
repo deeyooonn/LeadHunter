@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import type { WebsiteStatus, EnrichResponse } from '@/types/lead';
-import { supabaseServer } from '@/lib/supabase';
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -146,6 +145,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    if (process.env.NEXT_PUBLIC_PORTFOLIO_DEMO !== 'false') {
+      if (!/^demo-[1-6]$/.test(body.lead_id || '')) return NextResponse.json({error:'Select a sample lead first.'}, {status:400});
+      return NextResponse.json({email: `${body.lead_id}@example.com`, facebook_url:null, instagram_url:null, website_status:'CUSTOM_WEBSITE', demo:true});
+    }
+    const { supabaseServer } = await import('@/lib/supabase');
     lead_id = body.lead_id as string;
     website_url = body.website_url as string;
 
