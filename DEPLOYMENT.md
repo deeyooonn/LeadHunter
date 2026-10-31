@@ -1,5 +1,5 @@
 # Vercel deployment
-Import deeyooonn/Client-Scrapper, root ".", Next.js, Node 22.x. vercel.json uses npm ci and npm run build. No environment variables are required for the default portfolio demo.
+Import deeyooonn/LeadHunter (renamed from Client-Scrapper), root ".", Next.js, Node 22.x. vercel.json uses npm ci and npm run build. No environment variables are required for the default portfolio demo.
 
 NEXT_PUBLIC_PORTFOLIO_DEMO=true (also the default when unset) returns synthetic discovery/enrichment data. No live scraping, external outreach, or Supabase access occurs in this mode. Fictional company names and example.com email addresses are clearly labeled. Filters, detail views, enrichment and CSV export can be explored through the existing UI.
 
