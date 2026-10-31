@@ -217,3 +217,6 @@ body {
 .pulse-dot {
   animation: pulseDot 1.5s ease-in-out infinite;
 }
+
+@media(pointer:coarse){input,textarea,select,.select-input,.search-input{font-size:16px!important}button{min-height:44px;min-width:44px;touch-action:manipulation}.glass-card{backdrop-filter:none;-webkit-backdrop-filter:none}body{padding-bottom:env(safe-area-inset-bottom)}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
