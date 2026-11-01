@@ -219,6 +219,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
 
   // Available cities based on selected province
   const availableCities = useMemo(() => {
@@ -258,6 +259,7 @@ export default function Dashboard() {
     setIsSearching(true);
     setError(null);
     setHasSearched(true);
+    setStorageNotice(null);
 
     try {
       const payload: DiscoverRequest = {};
@@ -299,6 +301,7 @@ export default function Dashboard() {
 
       const foundLeads: Lead[] = data.leads ?? [];
       setLeads(foundLeads);
+      setStorageNotice(data.warning || null);
 
       if (foundLeads.length > 0) {
         showToast(`Discovered ${foundLeads.length} leads in ${effectiveProvince || 'the area'}!`, 'success');
@@ -361,6 +364,7 @@ export default function Dashboard() {
           )
         );
 
+        if (data.warning) setStorageNotice(data.warning);
         if (data.email) {
           showToast(`✓ Found email for ${lead.business_name}: ${data.email}`, 'success');
         } else {
@@ -441,6 +445,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
+        {storageNotice && <p role="status" className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">{storageNotice}</p>}
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <header className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

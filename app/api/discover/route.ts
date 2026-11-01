@@ -451,7 +451,7 @@ export async function POST(request: NextRequest) {
         console.log(`[discover] Returned ${fallbackLeads.length} leads in memory (Supabase migration pending)`);
         return NextResponse.json({
           leads: fallbackLeads,
-          warning: 'Note: Run supabase/migrations/001_create_leads.sql in your Supabase SQL editor to save leads permanently.',
+          warning: 'Database saving is unavailable. These results are available for this session and can be exported to CSV.',
         });
       }
 

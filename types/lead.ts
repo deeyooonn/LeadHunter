@@ -38,6 +38,7 @@ export interface EnrichRequest {
 }
 
 export interface EnrichResponse {
+  warning?: string;
   email: string | null;
   facebook_url: string | null;
   instagram_url: string | null;

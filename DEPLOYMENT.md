@@ -1,10 +1,9 @@
-# Vercel deployment
-Import deeyooonn/LeadHunter (renamed from Client-Scrapper), root ".", Next.js, Node 22.x. vercel.json uses npm ci and npm run build. No environment variables are required for the default portfolio demo.
+# Original LeadHunter deployment
 
-NEXT_PUBLIC_PORTFOLIO_DEMO=true (also the default when unset) returns synthetic discovery/enrichment data. No live scraping, external outreach, or Supabase access occurs in this mode. Fictional company names and example.com email addresses are clearly labeled. Filters, detail views, enrichment and CSV export can be explored through the existing UI.
+The deployed Next.js application uses live OpenStreetMap discovery and actual website enrichment. Synthetic portfolio responses and the sample-data banner have been removed.
 
-Verify: npm ci, npm run build, npm start. Discover sample leads, filter results, inspect a lead, enrich it, and export CSV. Test phone and desktop layouts.
+Production configuration uses the original project's NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and server-only SUPABASE_SERVICE_ROLE_KEY. Do not commit private settings.
 
-Setting NEXT_PUBLIC_PORTFOLIO_DEMO=false restores the original live workflow. That requires the Supabase schema and server credentials in the original README, and a separate review of live scraping behavior; it is not part of this demo deployment. Never expose SUPABASE_SERVICE_ROLE_KEY with a NEXT_PUBLIC_ prefix.
+The existing Supabase hostname failed DNS resolution during this release. Real discovered results can be used during the session and exported to CSV when persistence fails. Website enrichment now returns its actual result plus a visible saving-unavailable notice instead of discarding the result with a database error. This does not claim that the database has been repaired.
 
-After verifying the public demo URL, set VITE_DEMO_LEADHUNTER_URL in Portfolio-Website and redeploy it.
+Verify npm ci, npm run build, input validation, an actual discovery request, enrichment, CSV export and small-phone layout. External OSM/websites can be unavailable or rate-limited.

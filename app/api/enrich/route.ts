@@ -155,7 +155,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { supabaseServer } = await import('@/lib/supabase');
+    const finish = async (result: EnrichResponse) => {
+      try {
+        const { supabaseServer } = await import('@/lib/supabase');
+        const { error } = await supabaseServer.from('leads').update({
+          email: result.email,
+          facebook_url: result.facebook_url,
+          instagram_url: result.instagram_url,
+          website_status: result.website_status,
+        }).eq('id', lead_id);
+        if (!error) return NextResponse.json(result);
+      } catch {
+        // Preserve actual website results when optional storage is unavailable.
+      }
+      return NextResponse.json({ ...result, warning: 'Database saving is unavailable. These results are available for this session.' });
+    };
 
     const normalizedUrl = normalizeUrl(website_url);
 
@@ -171,10 +185,6 @@ export async function POST(request: NextRequest) {
         website_status = 'DEAD_LINK';
 
         // Update DB and return early
-        await supabaseServer
-          .from('leads')
-          .update({ website_status })
-          .eq('id', lead_id);
 
         const result: EnrichResponse = {
           email: null,
@@ -182,7 +192,7 @@ export async function POST(request: NextRequest) {
           instagram_url: null,
           website_status,
         };
-        return NextResponse.json(result);
+        return finish(result);
       }
 
       html = await response.text();
@@ -193,10 +203,6 @@ export async function POST(request: NextRequest) {
       console.warn(`[enrich] Fetch failed for ${normalizedUrl}: ${message}`);
       website_status = 'DEAD_LINK';
 
-      await supabaseServer
-        .from('leads')
-        .update({ website_status })
-        .eq('id', lead_id);
 
       const result: EnrichResponse = {
         email: null,
@@ -205,7 +211,7 @@ export async function POST(request: NextRequest) {
         website_status,
         error: `Website unreachable: ${message}`,
       };
-      return NextResponse.json(result);
+      return finish(result);
     }
 
     // ── Parse with Cheerio ────────────────────────────────────────────────────
@@ -215,23 +221,6 @@ export async function POST(request: NextRequest) {
     const { facebook_url, instagram_url } = extractSocialLinks($);
 
     // ── Update the lead in Supabase ───────────────────────────────────────────
-    const { error: dbError } = await supabaseServer
-      .from('leads')
-      .update({
-        email,
-        facebook_url,
-        instagram_url,
-        website_status,
-      })
-      .eq('id', lead_id);
-
-    if (dbError) {
-      console.error('[enrich] Supabase update error:', dbError);
-      return NextResponse.json(
-        { error: `Database error: ${dbError.message}` },
-        { status: 500 }
-      );
-    }
 
     const result: EnrichResponse = {
       email,
@@ -240,7 +229,7 @@ export async function POST(request: NextRequest) {
       website_status,
     };
 
-    return NextResponse.json(result);
+    return finish(result);
   } catch (err) {
     console.error('[enrich] Unexpected error:', err);
     return NextResponse.json(
