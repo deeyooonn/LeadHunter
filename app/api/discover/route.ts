@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Lead, LeadInsert, WebsiteStatus, DiscoverRequest } from '@/types/lead';
-import { createDemoLeads } from '@/lib/demo';
 
 // ─── Nominatim Types ──────────────────────────────────────────────────────────
 
@@ -371,10 +370,6 @@ function mapElementsToLeads(elements: OsmElement[], fallbackArea: string): LeadI
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as DiscoverRequest;
-    if (process.env.NEXT_PUBLIC_PORTFOLIO_DEMO !== 'false') {
-      return NextResponse.json({ leads: createDemoLeads(body), demo: true });
-    }
-    const { supabaseServer } = await import('@/lib/supabase');
     const { searchQuery, province, city, businessType } = body;
 
     // Determine query location string for Nominatim
@@ -397,6 +392,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const { supabaseServer } = await import('@/lib/supabase');
 
     console.log(
       `[discover] Starting discovery: location="${locationTarget}", category="${businessType ?? 'all'}"`

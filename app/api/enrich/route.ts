@@ -145,11 +145,6 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    if (process.env.NEXT_PUBLIC_PORTFOLIO_DEMO !== 'false') {
-      if (!/^demo-[1-6]$/.test(body.lead_id || '')) return NextResponse.json({error:'Select a sample lead first.'}, {status:400});
-      return NextResponse.json({email: `${body.lead_id}@example.com`, facebook_url:null, instagram_url:null, website_status:'CUSTOM_WEBSITE', demo:true});
-    }
-    const { supabaseServer } = await import('@/lib/supabase');
     lead_id = body.lead_id as string;
     website_url = body.website_url as string;
 
@@ -159,6 +154,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const { supabaseServer } = await import('@/lib/supabase');
 
     const normalizedUrl = normalizeUrl(website_url);
 
