@@ -5,9 +5,6 @@
 -- Enable UUID extension (already enabled in Supabase by default)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Drop existing table if needed (comment out if you want to preserve data)
--- DROP TABLE IF EXISTS public.leads;
-
 -- Create the leads table
 CREATE TABLE IF NOT EXISTS public.leads (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -38,20 +35,16 @@ CREATE INDEX IF NOT EXISTS idx_leads_created_at ON public.leads (created_at DESC
 -- Enable Row Level Security (RLS)
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 
--- Allow all operations with service role key (used by API routes)
--- For production, restrict this to authenticated users
+-- Only server API routes use this table. Browser roles have no direct access.
+REVOKE ALL ON public.leads FROM anon, authenticated;
+GRANT ALL ON public.leads TO service_role;
+
 CREATE POLICY "Allow all operations for service role"
   ON public.leads
   FOR ALL
+  TO service_role
   USING (true)
   WITH CHECK (true);
-
--- Optional: Allow read access to anonymous users (remove if you want auth)
-CREATE POLICY "Allow read for all"
-  ON public.leads
-  FOR SELECT
-  TO anon
-  USING (true);
 
 -- Comment on table
 COMMENT ON TABLE public.leads IS 'Local business leads collected from Google Places API';
